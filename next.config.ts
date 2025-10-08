@@ -15,9 +15,6 @@ const nextConfig: NextConfig = {
   compiler: {
     removeConsole: process.env.NODE_ENV === "production",
   },
-  env: {
-    API_BASE_URL: "https://keyone-admin-main-production.up.railway.app/api/v1"
-  },
 };
 
 export default nextConfig;
