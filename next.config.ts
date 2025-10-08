@@ -16,7 +16,7 @@ const nextConfig: NextConfig = {
     removeConsole: process.env.NODE_ENV === "production",
   },
   env: {
-    API_BASE_URL: "https://phplaravel-1469102-5765400.cloudwaysapps.com/keyone/public/api/v1"
+    API_BASE_URL: "https://keyone-admin-main-production.up.railway.app/api/v1"
   },
 };
 
