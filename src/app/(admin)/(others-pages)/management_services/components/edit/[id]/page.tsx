@@ -1,7 +1,7 @@
 "use client";
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import ClassicEditor from '@ckeditor/ckeditor5-build-classic';
 import { useParams, useRouter } from 'next/navigation';
 import Swal from 'sweetalert2';
 import { updateSeoPage, updateWhyChooseComponent, updateAboutUsComponent, updateServicesComponent, updateFaqComponent, getWhyChooseComponent, getAboutUsComponent, getServicesComponent, getFaqComponent, getSeoPage } from '@/utils/apiHandler/request';
@@ -36,6 +36,28 @@ export default function ManagementServiceComponentsEditPage() {
   const { id } = useParams();
   const router = useRouter();
   const token = getCookie('auth_token') || '';
+  // Lazy-load ClassicEditor on client to avoid SSR "window is not defined"
+  const [ClassicEditorBuilt, setClassicEditorBuilt] = useState<any>(null);
+  const [editorLoading, setEditorLoading] = useState(true);
+  
+  useEffect(() => {
+    let mounted = true;
+    import('@ckeditor/ckeditor5-build-classic')
+      .then(mod => {
+        if (!mounted) return;
+        // Handle both CommonJS and ES module exports and ensure proper constructor
+        const EditorConstructor = mod.default || mod;
+        // Verify it's a valid constructor before setting
+        if (typeof EditorConstructor === 'function' || (EditorConstructor && typeof EditorConstructor.create === 'function')) {
+          setClassicEditorBuilt(() => EditorConstructor);
+        }
+      })
+      .catch(err => console.error('Failed to load CKEditor build', err))
+      .finally(() => {
+        if (mounted) setEditorLoading(false);
+      });
+    return () => { mounted = false; };
+  }, []);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<Record<string, boolean>>({});
@@ -421,11 +443,15 @@ export default function ManagementServiceComponentsEditPage() {
                   <div>
                     <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Description</label>
                     <div className="rounded-lg border border-gray-300 bg-white dark:border-gray-700 dark:bg-gray-900">
-                      <CKEditor
-                        editor={ClassicEditor}
-                        data={aboutDescription}
-                        onChange={(_, editor) => setAboutDescription(editor.getData())}
-                      />
+                      {ClassicEditorBuilt && !editorLoading ? (
+                        <CKEditor
+                          editor={ClassicEditorBuilt}
+                          data={aboutDescription}
+                          onChange={(_, editor) => setAboutDescription(editor.getData())}
+                        />
+                      ) : (
+                        <div className="px-3 py-2 text-xs text-gray-400">Loading editor…</div>
+                      )}
                     </div>
                   </div>
                   <div>
@@ -526,11 +552,15 @@ export default function ManagementServiceComponentsEditPage() {
                         <div>
                           <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Description</label>
                           <div className="rounded-lg border border-gray-300 bg-white dark:border-gray-700 dark:bg-gray-900">
-                            <CKEditor
-                              editor={ClassicEditor}
-                              data={svc.description}
-                              onChange={(_, editor) => setServicesItems(prev => prev.map((s,i) => i===idx ? { ...s, description: editor.getData() } : s))}
-                            />
+                            {ClassicEditorBuilt && !editorLoading ? (
+                              <CKEditor
+                                editor={ClassicEditorBuilt}
+                                data={svc.description}
+                                onChange={(_, editor) => setServicesItems(prev => prev.map((s,i) => i===idx ? { ...s, description: editor.getData() } : s))}
+                              />
+                            ) : (
+                              <div className="px-3 py-2 text-xs text-gray-400">Loading editor…</div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -623,11 +653,15 @@ export default function ManagementServiceComponentsEditPage() {
                         <div>
                           <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Answer</label>
                           <div className="rounded-lg border border-gray-300 bg-white dark:border-gray-700 dark:bg-gray-900">
-                            <CKEditor
-                              editor={ClassicEditor}
-                              data={faq.answer}
-                              onChange={(_, editor) => setFaqs(prev => prev.map((f,i) => i===idx ? { ...f, answer: editor.getData() } : f))}
-                            />
+                            {ClassicEditorBuilt && !editorLoading ? (
+                              <CKEditor
+                                editor={ClassicEditorBuilt}
+                                data={faq.answer}
+                                onChange={(_, editor) => setFaqs(prev => prev.map((f,i) => i===idx ? { ...f, answer: editor.getData() } : f))}
+                              />
+                            ) : (
+                              <div className="px-3 py-2 text-xs text-gray-400">Loading editor…</div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -650,11 +684,15 @@ export default function ManagementServiceComponentsEditPage() {
               </div>
               <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">{section.description}</p>
               <div className="rounded-lg border border-gray-300 bg-white dark:border-gray-700 dark:bg-gray-900">
-                <CKEditor
-                  editor={ClassicEditor}
-                  data={contents[section.key] || ''}
-                  onChange={(_, editor) => setContents(prev => ({ ...prev, [section.key]: editor.getData() }))}
-                />
+                {ClassicEditorBuilt && !editorLoading ? (
+                  <CKEditor
+                    editor={ClassicEditorBuilt}
+                    data={contents[section.key] || ''}
+                    onChange={(_, editor) => setContents(prev => ({ ...prev, [section.key]: editor.getData() }))}
+                  />
+                ) : (
+                  <div className="px-3 py-2 text-xs text-gray-400">Loading editor…</div>
+                )}
               </div>
             </section>
           );
