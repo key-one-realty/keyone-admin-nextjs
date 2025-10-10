@@ -1,8 +1,8 @@
 "use client";
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
-import ClassicEditor from "@ckeditor/ckeditor5-build-classic";
 import { seoFormFields } from "@/utils/formConfig";
 import { createSeoPage, getSeoPage, updateSeoPage, getSeoParentPages } from "@/utils/apiHandler/request";
 import { getCookie } from "@/utils/helpers/cookie";
@@ -73,6 +73,29 @@ interface SeoPayload {
 }
 
 export default function SeoForm() {
+  // Lazy-load ClassicEditor on client to avoid SSR "window is not defined"
+  const [ClassicEditorBuilt, setClassicEditorBuilt] = useState<any>(null);
+  const [editorLoading, setEditorLoading] = useState(true);
+  
+  useEffect(() => {
+    let mounted = true;
+    import('@ckeditor/ckeditor5-build-classic')
+      .then(mod => {
+        if (!mounted) return;
+        // Handle both CommonJS and ES module exports and ensure proper constructor
+        const EditorConstructor = mod.default || mod;
+        // Verify it's a valid constructor before setting
+        if (typeof EditorConstructor === 'function' || (EditorConstructor && typeof EditorConstructor.create === 'function')) {
+          setClassicEditorBuilt(() => EditorConstructor);
+        }
+      })
+      .catch(err => console.error('Failed to load CKEditor build', err))
+      .finally(() => {
+        if (mounted) setEditorLoading(false);
+      });
+    return () => { mounted = false; };
+  }, []);
+
   const params = useParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -403,11 +426,15 @@ export default function SeoForm() {
                 <div key={String(name)} className="flex flex-col gap-1.5 md:col-span-2">
                   <label className="text-sm font-medium text-gray-700 dark:text-white/70">Content Block {idx}</label>
                   <div className="rounded-lg border border-gray-300 bg-white dark:border-gray-700 dark:bg-gray-900">
-                    <CKEditor
-                      editor={ClassicEditor}
-                      data={(formValues[name] as string) || ''}
-                      onChange={(_, editor) => handleChange(name, editor.getData())}
-                    />
+                    {ClassicEditorBuilt && !editorLoading ? (
+                      <CKEditor
+                        editor={ClassicEditorBuilt}
+                        data={(formValues[name] as string) || ''}
+                        onChange={(_, editor) => handleChange(name, editor.getData())}
+                      />
+                    ) : (
+                      <div className="px-3 py-2 text-xs text-gray-400">Loading editor…</div>
+                    )}
                   </div>
                 </div>
               );
@@ -495,11 +522,15 @@ export default function SeoForm() {
               <div key={field.name} className="flex flex-col gap-1.5 md:col-span-2">
                 <label className="text-sm font-medium text-gray-700 dark:text-white/70">{field.label}</label>
                 <div className="rounded-lg border border-gray-300 bg-white dark:border-gray-700 dark:bg-gray-900">
-                  <CKEditor
-                    editor={ClassicEditor}
-                    data={(formValues[field.name] as string) || ''}
-                    onChange={(_, editor) => handleChange(field.name, editor.getData())}
-                  />
+                  {ClassicEditorBuilt && !editorLoading ? (
+                    <CKEditor
+                      editor={ClassicEditorBuilt}
+                      data={(formValues[field.name] as string) || ''}
+                      onChange={(_, editor) => handleChange(field.name, editor.getData())}
+                    />
+                  ) : (
+                    <div className="px-3 py-2 text-xs text-gray-400">Loading editor…</div>
+                  )}
                 </div>
               </div>
             ))}
