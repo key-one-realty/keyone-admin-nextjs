@@ -2,9 +2,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
+import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import Swal from 'sweetalert2';
-import { updateSeoPage, updateWhyChooseComponent, updateAboutUsComponent, updateServicesComponent, updateFaqComponent, getWhyChooseComponent, getAboutUsComponent, getServicesComponent, getFaqComponent, getSeoPage } from '@/utils/apiHandler/request';
+import { updateSeoPage, updateWhyChooseComponent, updateAboutUsComponent, updateServicesComponent, updateFaqComponent, getWhyChooseComponent, getAboutUsComponent, getServicesComponent, getFaqComponent, getSeoPage, getHeroSection, updateHeroSection, getServicesBgSection, updateServicesBgSection, getTransparentPricing, updateTransparentPricing } from '@/utils/apiHandler/request';
 import { getCookie } from '@/utils/helpers/cookie';
 
 const CKEditor = dynamic(async () => (await import('@ckeditor/ckeditor5-react')).CKEditor, { ssr: false });
@@ -14,6 +15,9 @@ interface MetaContent {
   page_content_2?: string | null;
   page_content_3?: string | null;
   page_content_4?: string | null;
+  hero_section?: string | null; // JSON string: { title, subtitle, image }
+  services_bg_image?: string | null; // string: image data/url
+  transparent_pricing?: string | null; // JSON string: { title, description, button_text, link }
 }
 // Domain models for section content
 interface WhyChoosePoint { point?: string; }
@@ -22,6 +26,8 @@ interface AboutEntry { id?: number; description?: string; map_embed?: string }
 interface ServicesEntry { id?: number; title?: string; description?: string }
 interface FaqApiItem { id?: number; question?: string; answer?: string }
 interface FaqWrapped { id?: number; faqs: FaqApiItem[] }
+interface HeroApiEntry { id?: number; title?: string; sub_title?: string; image?: string }
+interface TransparentPricingEntry { id?: number; title?: string; description?: string; button_text?: string; link?: string }
 
 // Type guards & helper shapes for safer parsing
 const isRecord = (val: unknown): val is Record<string, unknown> => typeof val === 'object' && val !== null;
@@ -31,6 +37,8 @@ const isAboutEntry = (val: unknown): val is AboutEntry => isRecord(val);
 const isServicesEntry = (val: unknown): val is ServicesEntry => isRecord(val);
 const isFaqApiItem = (val: unknown): val is FaqApiItem => isRecord(val);
 const isFaqWrapped = (val: unknown): val is FaqWrapped => isRecord(val) && Array.isArray((val as Record<string, unknown>).faqs);
+const isHeroApiEntry = (val: unknown): val is HeroApiEntry => isRecord(val);
+const isTransparentPricingEntry = (val: unknown): val is TransparentPricingEntry => isRecord(val);
 
 export default function SeoPageComponentsEditPage() {
   const { id } = useParams();
@@ -65,12 +73,28 @@ export default function SeoPageComponentsEditPage() {
     page_content_1: '',
     page_content_2: '',
     page_content_3: '',
-    page_content_4: ''
+    page_content_4: '',
+    hero_section: '',
+    services_bg_image: '',
+    transparent_pricing: ''
   });
+  // Hero section state
+  const [heroTitle, setHeroTitle] = useState<string>('');
+  const [heroSubtitle, setHeroSubtitle] = useState<string>('');
+  const [heroImagePreview, setHeroImagePreview] = useState<string>(''); // url for preview
+  const [heroImageFile, setHeroImageFile] = useState<File | null>(null); // file to upload
+  // Services background image
+  const [servicesBgImagePreview, setServicesBgImagePreview] = useState<string>('');
+  const [servicesBgImageFile, setServicesBgImageFile] = useState<File | null>(null);
+  // Transparent Pricing
+  const [tpTitle, setTpTitle] = useState<string>('');
+  const [tpDescription, setTpDescription] = useState<string>('');
+  const [tpButtonText, setTpButtonText] = useState<string>('');
+  const [tpLink, setTpLink] = useState<string>('');
   const [whyTitle, setWhyTitle] = useState<string>('');
   const [whyPoints, setWhyPoints] = useState<string[]>([]);
   // Store section ids (returned from fetch) for subsequent POST URLs
-  const [sectionIds, setSectionIds] = useState<{ why?: number; about?: number; services?: number; faq?: number }>({});
+  const [sectionIds, setSectionIds] = useState<{ why?: number; about?: number; services?: number; faq?: number; hero?: number; servicesBg?: number; transparent?: number }>({});
   const [aboutDescription, setAboutDescription] = useState<string>('');
   const [aboutMapEmbed, setAboutMapEmbed] = useState<string>('');
   // Multiple services entries
@@ -112,14 +136,17 @@ export default function SeoPageComponentsEditPage() {
         return candidate;
       };
 
-      const [seoPageResp, whyResp, aboutResp, servicesResp, faqResp] = await Promise.all([
+      const [seoPageResp, heroResp, servicesBgResp, tpResp, whyResp, aboutResp, servicesResp, faqResp] = await Promise.all([
         getSeoPage(token, id),
+        getHeroSection(token, id),
+        getServicesBgSection(token, id),
+        getTransparentPricing(token, id),
         getWhyChooseComponent(token, whyId).finally(() => setSectionLoading(prev => ({ ...prev, why: false }))),
         getAboutUsComponent(token, aboutId).finally(() => setSectionLoading(prev => ({ ...prev, about: false }))),
         getServicesComponent(token, servicesId).finally(() => setSectionLoading(prev => ({ ...prev, services: false }))),
         getFaqComponent(token, faqId).finally(() => setSectionLoading(prev => ({ ...prev, faq: false })))
       ]);
-      console.log({ seoPageResp, whyResp, aboutResp, servicesResp, faqResp });
+      console.log({ seoPageResp, heroResp, servicesBgResp, tpResp, whyResp, aboutResp, servicesResp, faqResp });
 
       // Extract management service page title (new shape nests under data.title)
       if (isRecord(seoPageResp)) {
@@ -129,6 +156,75 @@ export default function SeoPageComponentsEditPage() {
         } else if (typeof (seoPageResp as Record<string, unknown>).title === 'string') {
           // Fallback to legacy flat shape
             setManagementServiceTitle(String((seoPageResp as Record<string, unknown>).title));
+        }
+        // We no longer read services background image from SEO meta; handled via dedicated API
+      }
+      // SERVICES BACKGROUND via dedicated API
+      const servicesBgUnwrapped = unwrap(servicesBgResp);
+      if (servicesBgUnwrapped) {
+        let entry: unknown = servicesBgUnwrapped;
+        if (isRecord(servicesBgUnwrapped) && Array.isArray((servicesBgUnwrapped as Record<string, unknown>).data)) {
+          const arr = (servicesBgUnwrapped as Record<string, unknown>).data as unknown[];
+          entry = arr[0];
+        } else if (Array.isArray(servicesBgUnwrapped)) {
+          entry = servicesBgUnwrapped[0];
+        }
+        if (isRecord(entry)) {
+          const sid = typeof (entry as Record<string, unknown>).id === 'number' ? (entry as Record<string, unknown>).id as number : undefined;
+          if (sid) setSectionIds(prev => ({ ...prev, servicesBg: sid }));
+          const img = typeof (entry as Record<string, unknown>).image === 'string' ? (entry as Record<string, unknown>).image as string : '';
+          if (img) {
+            setServicesBgImagePreview(img);
+            setContents(prev => ({ ...prev, services_bg_image: img }));
+          }
+        }
+      }
+
+      // HERO SECTION via dedicated API
+      const heroDataUnwrapped = unwrap(heroResp);
+      if (heroDataUnwrapped) {
+        let heroEntry: unknown = heroDataUnwrapped;
+        if (isRecord(heroDataUnwrapped) && Array.isArray((heroDataUnwrapped as Record<string, unknown>).data)) {
+          const arr = (heroDataUnwrapped as Record<string, unknown>).data as unknown[];
+          heroEntry = arr[0];
+        } else if (Array.isArray(heroDataUnwrapped)) {
+          heroEntry = heroDataUnwrapped[0];
+        }
+        if (isHeroApiEntry(heroEntry)) {
+          const hid = typeof heroEntry.id === 'number' ? heroEntry.id : undefined;
+          if (hid) setSectionIds(prev => ({ ...prev, hero: hid }));
+          const t = typeof heroEntry.title === 'string' ? heroEntry.title : '';
+          const st = typeof heroEntry.sub_title === 'string' ? heroEntry.sub_title : '';
+          const img = typeof heroEntry.image === 'string' ? heroEntry.image : '';
+          setHeroTitle(t);
+          setHeroSubtitle(st);
+          setHeroImagePreview(img);
+          setContents(prev => ({ ...prev, hero_section: JSON.stringify({ title: t, subtitle: st, image: img }) }));
+        }
+      }
+
+      // TRANSPARENT PRICING via dedicated API
+      const tpDataUnwrapped = unwrap(tpResp);
+      if (tpDataUnwrapped) {
+        let tpEntry: unknown = tpDataUnwrapped;
+        if (isRecord(tpDataUnwrapped) && Array.isArray((tpDataUnwrapped as Record<string, unknown>).data)) {
+          const arr = (tpDataUnwrapped as Record<string, unknown>).data as unknown[];
+          tpEntry = arr[0];
+        } else if (Array.isArray(tpDataUnwrapped)) {
+          tpEntry = tpDataUnwrapped[0];
+        }
+        if (isTransparentPricingEntry(tpEntry)) {
+          const tid = typeof (tpEntry as TransparentPricingEntry).id === 'number' ? (tpEntry as TransparentPricingEntry).id : undefined;
+          if (tid) setSectionIds(prev => ({ ...prev, transparent: tid }));
+          const t = typeof (tpEntry as TransparentPricingEntry).title === 'string' ? (tpEntry as TransparentPricingEntry).title : '';
+          const d = typeof (tpEntry as TransparentPricingEntry).description === 'string' ? (tpEntry as TransparentPricingEntry).description : '';
+          const bt = typeof (tpEntry as TransparentPricingEntry).button_text === 'string' ? (tpEntry as TransparentPricingEntry).button_text : '';
+          const l = typeof (tpEntry as TransparentPricingEntry).link === 'string' ? (tpEntry as TransparentPricingEntry).link : '';
+          setTpTitle(t ?? '');
+          setTpDescription(d ?? '');
+          setTpButtonText(bt ?? '');
+          setTpLink(l ?? '');
+          setContents(prev => ({ ...prev, transparent_pricing: JSON.stringify({ title: t, description: d, button_text: bt, link: l }) }));
         }
       }
 
@@ -306,6 +402,62 @@ export default function SeoPageComponentsEditPage() {
         const payload = { faqs: cleanedFaqs, page_type: 1 };
         await updateFaqComponent(token, id as string, sectionIds.faq, payload);
         setContents(prev => ({ ...prev, page_content_4: JSON.stringify(cleanedFaqs) }));
+      } else if (key === 'hero_section') {
+        // Build multipart form: only include image if selected
+        const res = await updateHeroSection(
+          token,
+          id as string,
+          sectionIds.hero,
+          { title: heroTitle, sub_title: heroSubtitle, imageFile: heroImageFile ?? undefined }
+        );
+        // Try to read back id and image url from response
+        if (isRecord(res) && isRecord(res) && Array.isArray((res as Record<string, unknown>).data as unknown[])) {
+          const dataArr = (res as Record<string, unknown>).data as unknown[];
+          const item = dataArr[0] as Record<string, unknown> | undefined;
+          if (item) {
+            const newId = typeof item.id === 'number' ? item.id : sectionIds.hero;
+            if (newId && newId !== sectionIds.hero) setSectionIds(prev => ({ ...prev, hero: newId }));
+            const img = typeof item.image === 'string' ? item.image : heroImagePreview;
+            if (img) setHeroImagePreview(img);
+            setContents(prev => ({ ...prev, hero_section: JSON.stringify({ title: heroTitle, subtitle: heroSubtitle, image: img }) }));
+          }
+        } else {
+          // Fallback: keep current preview
+          setContents(prev => ({ ...prev, hero_section: JSON.stringify({ title: heroTitle, subtitle: heroSubtitle, image: heroImagePreview }) }));
+        }
+      } else if (key === 'services_bg_image') {
+        // Services background uses dedicated endpoint (assume update path is /components/servicesbg/page/:id/:sectionId)
+        const res = await updateServicesBgSection(
+          token,
+          id as string,
+          sectionIds.servicesBg,
+          { imageFile: servicesBgImageFile ?? undefined }
+        );
+        if (isRecord(res) && Array.isArray((res as Record<string, unknown>).data as unknown[])) {
+          const dataArr = (res as Record<string, unknown>).data as unknown[];
+          const item = dataArr[0] as Record<string, unknown> | undefined;
+          if (item) {
+            const newId = typeof item.id === 'number' ? item.id : sectionIds.servicesBg;
+            if (newId && newId !== sectionIds.servicesBg) setSectionIds(prev => ({ ...prev, servicesBg: newId }));
+            const img = typeof item.image === 'string' ? item.image : servicesBgImagePreview;
+            if (img) setServicesBgImagePreview(img);
+            setContents(prev => ({ ...prev, services_bg_image: img }));
+          }
+        } else {
+          setContents(prev => ({ ...prev, services_bg_image: servicesBgImagePreview }));
+        }
+      } else if (key === 'transparent_pricing') {
+        const payload = { title: tpTitle, description: tpDescription, button_text: tpButtonText, link: tpLink, page_type: 1 };
+        const res = await updateTransparentPricing(token, id as string, sectionIds.transparent, payload);
+        if (isRecord(res) && Array.isArray((res as Record<string, unknown>).data as unknown[])) {
+          const dataArr = (res as Record<string, unknown>).data as unknown[];
+          const item = dataArr[0] as Record<string, unknown> | undefined;
+          if (item) {
+            const newId = typeof item.id === 'number' ? item.id : sectionIds.transparent;
+            if (newId && newId !== sectionIds.transparent) setSectionIds(prev => ({ ...prev, transparent: newId }));
+          }
+        }
+        setContents(prev => ({ ...prev, transparent_pricing: JSON.stringify(payload) }));
       } else {
         const value: string | null = contents[key] || '';
         const payload = { meta: { [key]: value }, page_type: 1 };
@@ -327,9 +479,12 @@ export default function SeoPageComponentsEditPage() {
   };
 
   const sectionDefs: { key: keyof MetaContent; title: string; description: string }[] = [
+    { key: 'hero_section', title: 'Hero Section', description: 'Title, subtitle and image displayed at the top of the page.' },
     { key: 'page_content_1', title: 'Manage Why Choose Us', description: 'Content displayed in the Why Choose Us section.' },
     { key: 'page_content_2', title: 'Manage About Us', description: 'Content for the About Us section.' },
+    { key: 'services_bg_image', title: 'Service Background Image', description: 'Background image used behind the Services section.' },
     { key: 'page_content_3', title: 'Manage Our Services', description: 'Details of services offered.' },
+    { key: 'transparent_pricing', title: 'Manage Transperent Pricing', description: 'Title, description, button text and link.' },
     { key: 'page_content_4', title: 'Manage FAQ', description: 'Frequently Asked Questions content.' }
   ];
 
@@ -349,6 +504,134 @@ export default function SeoPageComponentsEditPage() {
   {/* Global spinner removed; skeletons show inline */}
       <div className="space-y-10">
         {sectionDefs.map(section => {
+          if (section.key === 'hero_section') {
+            return (
+              <section key={section.key} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-white/5">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-lg font-medium">{section.title}</h3>
+                  <button
+                    onClick={() => handleUpdate(section.key)}
+                    disabled={!!saving[section.key] || loading}
+                    className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium shadow hover:bg-blue-700 disabled:opacity-50"
+                  >{saving[section.key] ? 'Saving...' : 'Save Section'}</button>
+                </div>
+                <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">{section.description}</p>
+                <div className="space-y-6">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Title</label>
+                    <input
+                      type="text"
+                      value={heroTitle}
+                      onChange={e => setHeroTitle(e.target.value)}
+                      placeholder="Enter hero title"
+                      className="h-11 w-full rounded-lg border border-gray-300 bg-white px-4 text-sm shadow-theme-xs focus:border-blue-300 focus:outline-hidden focus:ring-3 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Subtitle</label>
+                    <input
+                      type="text"
+                      value={heroSubtitle}
+                      onChange={e => setHeroSubtitle(e.target.value)}
+                      placeholder="Enter hero subtitle"
+                      className="h-11 w-full rounded-lg border border-gray-300 bg-white px-4 text-sm shadow-theme-xs focus:border-blue-300 focus:outline-hidden focus:ring-3 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Image</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setHeroImageFile(file);
+                        const objectUrl = URL.createObjectURL(file);
+                        setHeroImagePreview(objectUrl);
+                        setContents(prev => ({ ...prev, hero_section: JSON.stringify({ title: heroTitle, subtitle: heroSubtitle, image: objectUrl }) }));
+                      }}
+                      className="block w-full text-sm text-gray-600 file:mr-4 file:rounded-md file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-gray-200 dark:text-gray-300 dark:file:bg-gray-800 dark:hover:file:bg-gray-700"
+                    />
+                    {heroImagePreview && (
+                      <div className="mt-3">
+                        <Image
+                          src={heroImagePreview}
+                          alt="Hero preview"
+                          width={640}
+                          height={360}
+                          unoptimized
+                          className="h-36 w-auto rounded-md border border-gray-200 object-cover dark:border-white/10"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </section>
+            );
+          }
+          if (section.key === 'transparent_pricing') {
+            return (
+              <section key={section.key} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-white/5">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-lg font-medium">Manage Transperent Pricing</h3>
+                  <button
+                    onClick={() => handleUpdate(section.key)}
+                    disabled={!!saving[section.key] || loading}
+                    className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium shadow hover:bg-blue-700 disabled:opacity-50"
+                  >{saving[section.key] ? 'Saving...' : 'Save Section'}</button>
+                </div>
+                <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">Enter the title, rich description, button text and link for the Transparent Pricing section.</p>
+                <div className="space-y-6">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Title</label>
+                    <input
+                      type="text"
+                      value={tpTitle}
+                      onChange={e => setTpTitle(e.target.value)}
+                      placeholder="Transparent Pricing Title"
+                      className="h-11 w-full rounded-lg border border-gray-300 bg-white px-4 text-sm shadow-theme-xs focus:border-blue-300 focus:outline-hidden focus:ring-3 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Description</label>
+                    <div className="rounded-lg border border-gray-300 bg-white dark:border-gray-700 dark:bg-gray-900">
+                      {ClassicEditorBuilt && !editorLoading ? (
+                        <CKEditor
+                          editor={ClassicEditorBuilt}
+                          data={tpDescription}
+                          onChange={(_, editor) => setTpDescription(editor.getData())}
+                        />
+                      ) : (
+                        <div className="px-3 py-2 text-xs text-gray-400">Loading editor…</div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Button Text</label>
+                      <input
+                        type="text"
+                        value={tpButtonText}
+                        onChange={e => setTpButtonText(e.target.value)}
+                        placeholder="Get a Quote"
+                        className="h-11 w-full rounded-lg border border-gray-300 bg-white px-4 text-sm shadow-theme-xs focus:border-blue-300 focus:outline-hidden focus:ring-3 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Button Link</label>
+                      <input
+                        type="text"
+                        value={tpLink}
+                        onChange={e => setTpLink(e.target.value)}
+                        placeholder="#"
+                        className="h-11 w-full rounded-lg border border-gray-300 bg-white px-4 text-sm shadow-theme-xs focus:border-blue-300 focus:outline-hidden focus:ring-3 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </section>
+            );
+          }
           if (section.key === 'page_content_1') {
             return (
               <section key={section.key} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-white/5">
@@ -467,6 +750,47 @@ export default function SeoPageComponentsEditPage() {
                   </div>
                 </div>
                 </>) }
+              </section>
+            );
+          } else if (section.key === 'services_bg_image') {
+            return (
+              <section key={section.key} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-white/5">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-lg font-medium">Service Background Image</h3>
+                  <button
+                    onClick={() => handleUpdate(section.key)}
+                    disabled={!!saving[section.key] || loading}
+                    className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium shadow hover:bg-blue-700 disabled:opacity-50"
+                  >{saving[section.key] ? 'Saving...' : 'Save Section'}</button>
+                </div>
+                <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">Upload an image to be used as the background for the Services section.</p>
+                <div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setServicesBgImageFile(file);
+                      const objectUrl = URL.createObjectURL(file);
+                      setServicesBgImagePreview(objectUrl);
+                      setContents(prev => ({ ...prev, services_bg_image: objectUrl }));
+                    }}
+                    className="block w-full text-sm text-gray-600 file:mr-4 file:rounded-md file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-gray-200 dark:text-gray-300 dark:file:bg-gray-800 dark:hover:file:bg-gray-700"
+                  />
+                  {servicesBgImagePreview && (
+                    <div className="mt-3">
+                      <Image
+                        src={servicesBgImagePreview}
+                        alt="Services background preview"
+                        width={640}
+                        height={360}
+                        unoptimized
+                        className="h-36 w-auto rounded-md border border-gray-200 object-cover dark:border-white/10"
+                      />
+                    </div>
+                  )}
+                </div>
               </section>
             );
           } else if (section.key === 'page_content_3') {
