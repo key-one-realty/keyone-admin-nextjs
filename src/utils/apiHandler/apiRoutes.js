@@ -16,5 +16,10 @@ export const API_ROUTES = {
   WHY_CHOOSE_COMPONENT: (pageId, sectionId) => `/components/whychoose/page/${pageId}${sectionId ? `/${sectionId}` : ''}`,
   ABOUT_US_COMPONENT: (pageId, sectionId) => `/components/aboutus/page/${pageId}${sectionId ? `/${sectionId}` : ''}`,
   SERVICES_COMPONENT: (pageId, sectionId) => `/components/services/page/${pageId}${sectionId ? `/${sectionId}` : ''}`,
-  FAQ_COMPONENT: (pageId, sectionId) => `/components/faq/page/${pageId}${sectionId ? `/${sectionId}` : ''}`
+  FAQ_COMPONENT: (pageId, sectionId) => `/components/faq/page/${pageId}${sectionId ? `/${sectionId}` : ''}`,
+  HERO_SECTION: (pageId, sectionId) => `/components/herosection/page/${pageId}${sectionId ? `/${sectionId}` : ''}`
+  ,
+  SERVICES_BG: (pageId, sectionId) => `/components/servicesbg/page/${pageId}${sectionId ? `/${sectionId}` : ''}`
+  ,
+  TRANSPARENT_PRICING: (pageId, sectionId) => `/components/transparentpricing/page/${pageId}${sectionId ? `/${sectionId}` : ''}`
 };

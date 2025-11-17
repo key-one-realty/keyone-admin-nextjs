@@ -390,3 +390,105 @@ export const getFaqComponent = async (token, id) => {
     throw error;
   }
 }
+
+// =========================
+// HERO section APIs (multipart for create/update)
+// =========================
+export const getHeroSection = async (token, id) => {
+  try {
+    const response = await makeRequest({
+      url: API_ROUTES.HERO_SECTION(id),
+      method: "GET",
+      token,
+    });
+    return response.status === 200 ? response?.data : {};
+  } catch (error) {
+    console.log("ERROR in getHeroSection", error);
+    throw error;
+  }
+}
+
+export const updateHeroSection = async (token, pageId, sectionId, { title, sub_title, imageFile }) => {
+  try {
+    const formData = new FormData();
+    if (title !== undefined) formData.append('title', title);
+    if (sub_title !== undefined) formData.append('sub_title', sub_title);
+    if (imageFile) formData.append('image', imageFile);
+    const url = API_ROUTES.HERO_SECTION(pageId, sectionId ? sectionId : undefined);
+    // API expects POST for both create and update
+    const response = await makeRequest({
+      url,
+      method: "POST",
+      token,
+      formData,
+    });
+    return response.status === 200 ? response?.data : {};
+  } catch (error) {
+    console.log("ERROR in updateHeroSection", error);
+    throw error;
+  }
+}
+
+// Services Background Image APIs
+export const getServicesBgSection = async (token, id) => {
+  try {
+    const response = await makeRequest({
+      url: API_ROUTES.SERVICES_BG(id),
+      method: "GET",
+      token,
+    });
+    return response.status === 200 ? response?.data : {};
+  } catch (error) {
+    console.log("ERROR in getServicesBgSection", error);
+    throw error;
+  }
+}
+
+export const updateServicesBgSection = async (token, pageId, sectionId, { imageFile }) => {
+  try {
+    const formData = new FormData();
+    if (imageFile) formData.append('image', imageFile);
+    const url = API_ROUTES.SERVICES_BG(pageId, sectionId ? sectionId : undefined);
+    const response = await makeRequest({
+      url,
+      method: "POST",
+      token,
+      formData,
+    });
+    return response.status === 200 ? response?.data : {};
+  } catch (error) {
+    console.log("ERROR in updateServicesBgSection", error);
+    throw error;
+  }
+}
+
+// Transparent Pricing APIs
+export const getTransparentPricing = async (token, id) => {
+  try {
+    const response = await makeRequest({
+      url: API_ROUTES.TRANSPARENT_PRICING(id),
+      method: "GET",
+      token,
+    });
+    return response.status === 200 ? response?.data : {};
+  } catch (error) {
+    console.log("ERROR in getTransparentPricing", error);
+    throw error;
+  }
+}
+
+export const updateTransparentPricing = async (token, pageId, sectionId, data) => {
+  try {
+    const url = API_ROUTES.TRANSPARENT_PRICING(pageId, sectionId ? sectionId : undefined);
+    const response = await makeRequest({
+      url,
+      method: "POST",
+      token,
+      data,
+    });
+    return response.status === 200 ? response?.data : {};
+  } catch (error) {
+    console.log("ERROR in updateTransparentPricing", error);
+    throw error;
+  }
+}
